@@ -49,7 +49,7 @@ const S = {
   started: false,
 };
 const player = makePolarBear({});
-player.group.position.set(-8, 0, 44);
+player.group.position.set(-8, 0, 42);
 scene.add(player.group);
 
 const female = makePolarBear({ female: true });
@@ -302,8 +302,8 @@ function eatFood(heal, xp, label) {
   gainXp(xp);
   toast(label + ' yedin. (+' + heal + ' can, +' + xp + ' XP)');
 }
-// İn kapısı (dışarıda, inin ağzı önü)
-function denDoorPos() { return { x: W.denPos.x, z: W.denPos.z + 7 }; }
+// İn kapısı (dışarıda, inin ağzı önü — kapı kuzeye, doğum noktasına bakar)
+function denDoorPos() { return { x: W.denPos.x, z: W.denPos.z - 7 }; }
 // Mağara ağzı yakınlık testi -> mağara indisi, yoksa -1
 function caveMouthIndex(pp) {
   for (let i = 0; i < W.caves.length; i++) {
@@ -450,15 +450,15 @@ function startGame(useSave) {
     if (sv) {
       applySave(S, sv);
       // kayıt bir iç odadaysa orada devam et (çıkış iniş kapısına döner)
-      const ri = W.interiors.findIndex(r => Math.hypot((S.px ?? -8) - r.x, (S.pz ?? 44) - r.z) < r.r + 2);
+      const ri = W.interiors.findIndex(r => Math.hypot((S.px ?? -8) - r.x, (S.pz ?? 42) - r.z) < r.r + 2);
       if (ri >= 0) {
         const room = W.interiors[ri];
         S.inside = { type: room.id, index: ri, room };
-        S.outsidePos = new THREE.Vector3(W.denPos.x, 0, W.denPos.z + 8);
+        S.outsidePos = new THREE.Vector3(W.denPos.x, 0, W.denPos.z - 8);
         S.outsidePos.y = W.groundY(S.outsidePos.x, S.outsidePos.z);
         player.group.position.set(S.px, room.floorY, S.pz);
       } else {
-        player.group.position.set(S.px ?? -8, 0, S.pz ?? 44);
+        player.group.position.set(S.px ?? -8, 0, S.pz ?? 42);
         player.group.position.y = W.groundY(player.group.position.x, player.group.position.z);
       }
       setWoundLevel(player, S.hp / S.maxHp);

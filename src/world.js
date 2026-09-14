@@ -149,8 +149,10 @@ export function buildWorld(scene, opts = {}) {
 // Ayrı iç alanlar: E ile girilir, dış dünyadan uzakta kendi odaları vardır.
 function buildInteriors(scene, W, peak) {
   W.interiors = [];
-  const snowIn = new THREE.MeshStandardMaterial({ color: 0xeef6fb, roughness: 0.95, side: THREE.DoubleSide });
-  const rockIn = new THREE.MeshStandardMaterial({ color: 0x4a5560, roughness: 1, flatShading: true, side: THREE.DoubleSide });
+  // Duvarlar tek yönlüdür (BackSide): içeriden görünür ve serttir,
+  // kamera duvar dışına taşsa bile görüş kapanmaz.
+  const snowIn = new THREE.MeshStandardMaterial({ color: 0xeef6fb, roughness: 0.95, side: THREE.BackSide });
+  const rockIn = new THREE.MeshStandardMaterial({ color: 0x4a5560, roughness: 1, flatShading: true, side: THREE.BackSide });
 
   // --- Ayı ini (sıcak iglo) ---
   {
@@ -167,10 +169,10 @@ function buildInteriors(scene, W, peak) {
     g.add(rug);
     // kapı süsü (güney duvarı, içeriden görünür)
     const door = new THREE.Mesh(new THREE.CircleGeometry(1.7, 20, 0, Math.PI), new THREE.MeshBasicMaterial({ color: 0x060b12, side: THREE.DoubleSide }));
-    door.position.set(0, 0.4, 8.4); door.rotation.y = Math.PI;
+    door.position.set(0, 0.4, 8.95); door.rotation.y = Math.PI;
     g.add(door);
     const rim = new THREE.Mesh(new THREE.TorusGeometry(1.9, 0.4, 10, 20, Math.PI), new THREE.MeshStandardMaterial({ color: 0xd8b46a, roughness: 0.6, side: THREE.DoubleSide }));
-    rim.position.set(0, 0.4, 8.35); rim.rotation.y = Math.PI;
+    rim.position.set(0, 0.4, 8.9); rim.rotation.y = Math.PI;
     g.add(rim);
     // kemik yığını süsü
     const boneM = new THREE.MeshStandardMaterial({ color: 0xf2ead8, roughness: 0.8 });
@@ -247,10 +249,10 @@ function buildDen(scene, W) {
   // giriş (karanlık kemer)
   const dark = new THREE.MeshBasicMaterial({ color: 0x060b12 });
   const door = new THREE.Mesh(new THREE.CircleGeometry(1.7, 24, 0, Math.PI), dark);
-  door.position.set(0, 0.4, 6.1);
+  door.position.set(0, 0.4, 6.45);
   g.add(door);
   const rim = new THREE.Mesh(new THREE.TorusGeometry(1.9, 0.5, 10, 20, Math.PI), new THREE.MeshStandardMaterial({ color: 0xdceef7, roughness: 0.8 }));
-  rim.position.set(0, 0.4, 6.0);
+  rim.position.set(0, 0.4, 6.4);
   g.add(rim);
   // sıcak ışık + duman
   const lamp = new THREE.PointLight(0xffc98a, 0, 14);
@@ -267,9 +269,16 @@ function buildDen(scene, W) {
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1), new THREE.MeshStandardMaterial({ color: 0xd8b46a, side: THREE.DoubleSide }));
   flag.position.set(5.3, 3.2, 3); g.add(flag);
   W.denFlag = flag;
+  // kapı doğum noktasına (kuzeye) bakar
+  g.rotation.y = Math.PI;
   g.position.copy(W.denPos);
   scene.add(g);
   W.denGroup = g;
+  // höyük gövdesi serttir; kapı önünde boşluk bırakılır
+  const dx0 = W.denPos.x, dz0 = W.denPos.z;
+  W.colliders.push({ x: dx0, z: dz0 + 1.5, r: 5.0 });
+  W.colliders.push({ x: dx0 - 5, z: dz0 - 4.5, r: 2.8 });
+  W.colliders.push({ x: dx0 + 5, z: dz0 - 4.5, r: 2.8 });
 }
 
 function buildCaves(scene, W, peak) {
