@@ -140,10 +140,87 @@ export function buildWorld(scene, opts = {}) {
   W.denPos.y = peak(-8, 52);
   buildDen(scene, W);
   buildCaves(scene, W, peak);
+  buildPines(scene, W, peak, quality);
   buildInteriors(scene, W, peak);
   buildSky(scene, W);
   buildSnowfall(scene, W, quality);
   return W;
+}
+
+// Çam dikimine uygunluk: kaçınılacak alanların dışında mı?
+export function isPineSpotClear(x, z, spots) {
+  for (const s of spots) {
+    if (Math.hypot(x - s.x, z - s.z) < s.r) return false;
+  }
+  return true;
+}
+
+// Karlı çamlar: kümeler halinde, gövde + 3 kat yeşil dal + 3 kat kar başlığı.
+// Parçalar InstancedMesh'tir (tek çizim çağrısı), gövdeler serttir.
+function buildPines(scene, W, peak, quality) {
+  const spots = [
+    ...W.waters.map(w => ({ x: w.x, z: w.z, r: w.r + 7 })),
+    { x: W.denPos.x, z: W.denPos.z, r: 15 },
+    { x: -8, z: 42, r: 10 },
+    ...W.caves.flatMap(c => [{ x: c.x, z: c.z, r: 13 }, { x: c.mouth.x, z: c.mouth.z, r: 10 }]),
+  ];
+  const target = quality === 'low' ? 26 : quality === 'high' ? 70 : 48;
+  const clusters = [];
+  for (let i = 0; i < 9; i++) clusters.push({ x: (Math.random() - 0.5) * 260, z: (Math.random() - 0.5) * 260 });
+  const pts = [];
+  let guard = 0;
+  while (pts.length < target && guard++ < 3000) {
+    const c = clusters[(Math.random() * clusters.length) | 0];
+    const x = c.x + (Math.random() - 0.5) * 38, z = c.z + (Math.random() - 0.5) * 38;
+    if (Math.abs(x) > 145 || Math.abs(z) > 145) continue;
+    if (!isPineSpotClear(x, z, spots)) continue;
+    if (pts.some(p => Math.hypot(p.x - x, p.z - z) < 5)) continue;
+    pts.push({ x, z, s: 0.8 + Math.random() * 0.8, rot: Math.random() * Math.PI * 2 });
+  }
+  const n = pts.length;
+  if (!n) return;
+  const dummy = new THREE.Object3D();
+  const trunks = new THREE.InstancedMesh(
+    new THREE.CylinderGeometry(0.28, 0.42, 2.2, 8),
+    new THREE.MeshStandardMaterial({ color: 0x4a3826, roughness: 1 }), n);
+  const greens = new THREE.InstancedMesh(
+    new THREE.ConeGeometry(1, 1, 9),
+    new THREE.MeshStandardMaterial({ color: 0x2c5a3c, roughness: 0.95, flatShading: true }), n * 3);
+  const whites = new THREE.InstancedMesh(
+    new THREE.ConeGeometry(1, 1, 9),
+    new THREE.MeshStandardMaterial({ color: 0xf2f8fc, roughness: 0.9, flatShading: true }), n * 3);
+  // [merkezY, yarıçap, yükseklik]: yeşil dal + üstündeki kar başlığı
+  const tiers = [
+    { g: [2.6, 2.1, 3.0], w: [4.1, 1.5, 1.6] },
+    { g: [4.6, 1.6, 2.6], w: [5.9, 1.15, 1.4] },
+    { g: [6.2, 1.1, 2.2], w: [7.3, 0.8, 1.2] },
+  ];
+  pts.forEach((p, i) => {
+    const y = peak(p.x, p.z) - 0.15;
+    dummy.position.set(p.x, y + 1.1 * p.s, p.z);
+    dummy.scale.setScalar(p.s);
+    dummy.rotation.set(0, p.rot, 0);
+    dummy.updateMatrix();
+    trunks.setMatrixAt(i, dummy.matrix);
+    tiers.forEach((t, li) => {
+      dummy.rotation.set(0, p.rot + li * 0.7, 0);
+      dummy.position.set(p.x, y + t.g[0] * p.s, p.z);
+      dummy.scale.set(t.g[1] * p.s, t.g[2] * p.s, t.g[1] * p.s);
+      dummy.updateMatrix();
+      greens.setMatrixAt(i * 3 + li, dummy.matrix);
+      dummy.position.set(p.x, y + t.w[0] * p.s, p.z);
+      dummy.scale.set(t.w[1] * p.s, t.w[2] * p.s, t.w[1] * p.s);
+      dummy.updateMatrix();
+      whites.setMatrixAt(i * 3 + li, dummy.matrix);
+    });
+    W.colliders.push({ x: p.x, z: p.z, r: 0.9 * p.s });
+  });
+  for (const m of [trunks, greens, whites]) {
+    m.castShadow = true; m.receiveShadow = true;
+    m.instanceMatrix.needsUpdate = true;
+    scene.add(m);
+  }
+  W.pineCount = n;
 }
 
 // Ayrı iç alanlar: E ile girilir, dış dünyadan uzakta kendi odaları vardır.

@@ -36,6 +36,15 @@ describe('eve dönüş bağı', () => {
   });
 });
 
+describe('çam dikim alanı', () => {
+  it('korunan alanın içi ve sınırı doğru değerlendirilir', async () => {
+    const { isPineSpotClear } = await import('../src/world.js');
+    const spots = [{ x: 0, z: 0, r: 10 }];
+    assert.equal(isPineSpotClear(5, 0, spots), false);
+    assert.equal(isPineSpotClear(20, 0, spots), true);
+  });
+});
+
 describe('oda kelepçesi', () => {
   it('içerideyse null', () => {
     assert.equal(clampToCircle(1, 1, 0, 0, 5), null);
