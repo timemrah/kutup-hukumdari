@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { separationDelta, clampToCircle } from '../src/movement.js';
+import { separationDelta, clampToCircle, homeDirection } from '../src/movement.js';
 
 describe('temaslı itme (iç içe geçme yok)', () => {
   it('örtüşen iki gövde min mesafeye ayrılır', () => {
@@ -21,6 +21,18 @@ describe('temaslı itme (iç içe geçme yok)', () => {
   });
   it('aynı merkezde null (patlama yok)', () => {
     assert.equal(separationDelta(1, 1, 1, 1, 2, 0.5), null);
+  });
+});
+
+describe('eve dönüş bağı', () => {
+  it('bağ içindeyse null (serbest gezinir)', () => {
+    assert.equal(homeDirection(5, 0, 0, 0, 14), null);
+  });
+  it('bağ aşıldıysa eve doğru birim yön döner', () => {
+    const h = homeDirection(20, 0, 0, 0, 14);
+    assert.ok(h, 'yön yok');
+    assert.ok(Math.abs(h.x + 1) < 1e-9 && Math.abs(h.z) < 1e-9);
+    assert.ok(Math.abs(Math.hypot(h.x, h.z) - 1) < 1e-9);
   });
 });
 

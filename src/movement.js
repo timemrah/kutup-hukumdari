@@ -53,3 +53,11 @@ export function clampToCircle(x, z, cx, cz, r) {
   if (d <= r) return null;
   return { x: cx + (dx / d) * r, z: cz + (dz / d) * r };
 }
+
+// Eve dönüş: bağ mesafesi aşıldıysa eve doğru birim yön, yoksa null.
+export function homeDirection(x, z, hx, hz, leash) {
+  const dx = hx - x, dz = hz - z;
+  const d = Math.hypot(dx, dz);
+  if (d <= leash) return null;
+  return { x: dx / d, z: dz / d };
+}

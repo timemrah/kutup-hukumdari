@@ -5,7 +5,7 @@ import { makePenguin, makeWolf, makeFox, makeWalrus, makeFish, makeMeat, showWou
 import { clawPose, bitePose, CLAW_STRIKE_P, BITE_SNAP_P } from './attacks.js';
 import { collectSave, applySave, hasSave, loadSave, writeSave, clearSave } from './save.js';
 import { GameAudio } from './audio.js';
-import { moveVector, inAttackArc, separationDelta, clampToCircle } from './movement.js';
+import { moveVector, inAttackArc, separationDelta, clampToCircle, homeDirection } from './movement.js';
 import { actionForKey, actionForMouseButton } from './bindings.js';
 
 const canvas = document.getElementById('scene');
@@ -97,13 +97,15 @@ function spawnEnemy(kind, x, z, boss = false) {
     }
   });
   const radius = (kind === 'wolf' ? 1.0 : kind === 'fox' ? 0.65 : 1.5) * (boss ? 1.4 : 1);
-  const e = { kind, boss, ...base, maxHp: base.hp, model, atkCd: Math.random(), wander: Math.random() * 6, alive: true, bar, mats: [...mats], flash: 0, lunge: 0, lastHit: -99, radius, roomIndex: null, name: boss ? (kind === 'wolf' ? 'Alfa Kurt' : 'Dev Mors') : ({ wolf: 'Kutup Kurdu', fox: 'Kutup Tilkisi', walrus: 'Mors' })[kind] };
+  const e = { kind, boss, ...base, maxHp: base.hp, model, atkCd: Math.random(), wander: Math.random() * 6, alive: true, bar, mats: [...mats], flash: 0, lunge: 0, lastHit: -99, radius, roomIndex: null, home: { x, z }, name: boss ? (kind === 'wolf' ? 'Alfa Kurt' : 'Dev Mors') : ({ wolf: 'Kutup Kurdu', fox: 'Kutup Tilkisi', walrus: 'Mors' })[kind] };
   enemies.push(e);
   return e;
 }
 spawnEnemy('wolf', 40, -10); spawnEnemy('wolf', -50, -20); spawnEnemy('fox', 15, 40);
 spawnEnemy('fox', -20, -35); spawnEnemy('walrus', 34, 26); spawnEnemy('wolf', -10, -60);
 spawnEnemy('fox', 55, 45);
+// morslar gölet bekçisidir: her gölette bir tane
+spawnEnemy('walrus', -30, 24); spawnEnemy('walrus', 10, -38);
 // Boss'lar mağara İÇLERİNDE hüküm sürer (E ile girilen ayrı arenalar)
 const bossDefs = [{ kind: 'wolf', room: 1 }, { kind: 'walrus', room: 2 }];
 for (const b of bossDefs) {
@@ -758,8 +760,10 @@ function animate() {
           if (S.hp <= 0) { S.hp = 0; showEnd(false, 'Buz seni aldı. Daha çok ye, seviyeni yükselt ve tekrar dene.'); }
         }
       } else {
-        mvx = Math.sin(e.wander * 0.5); mvz = Math.cos(e.wander * 0.5);
-        spd *= 0.3;
+        // evden uzaklaşıldıysa geri dön (morslar göletlerinde kalır)
+        const hd = homeDirection(ep.x, ep.z, e.home.x, e.home.z, 14);
+        if (hd) { mvx = hd.x; mvz = hd.z; spd *= 0.5; }
+        else { mvx = Math.sin(e.wander * 0.5); mvz = Math.cos(e.wander * 0.5); spd *= 0.3; }
       }
       ep.x += mvx * spd * dt; ep.z += mvz * spd * dt;
       if (e.lunge > 0) {
@@ -851,9 +855,11 @@ function animate() {
   // --- kamera ---
   {
     const p = player.group.position;
-    const cx = p.x + Math.sin(S.yaw) * Math.cos(S.pitch) * S.dist;
-    const cz = p.z + Math.cos(S.yaw) * Math.cos(S.pitch) * S.dist;
-    const cy = p.y + 2 + Math.sin(S.pitch) * S.dist;
+    // iç odada kamera duvar dışına taşmasın
+    const effDist = S.inside ? Math.min(S.dist, S.inside.room.r * 0.65) : S.dist;
+    const cx = p.x + Math.sin(S.yaw) * Math.cos(S.pitch) * effDist;
+    const cz = p.z + Math.cos(S.yaw) * Math.cos(S.pitch) * effDist;
+    const cy = p.y + 2 + Math.sin(S.pitch) * effDist;
     camera.position.lerp(new THREE.Vector3(cx, Math.max(cy, p.y - 3), cz), 0.12);
     camera.lookAt(p.x, p.y + 1.8, p.z);
     // gök kubbe iç alanlara ışınlanınca da üstümüzde dursun

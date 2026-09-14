@@ -180,7 +180,7 @@ function buildInteriors(scene, W, peak) {
       b.position.set(-4.5 + (i % 2) * 0.6, 0.15, -3 + i * 0.5);
       g.add(b);
     }
-    const lamp = new THREE.PointLight(0xffc98a, 2.4, 26);
+    const lamp = new THREE.PointLight(0xffc98a, 60, 30);
     lamp.position.set(0, 4, 0);
     g.add(lamp);
     g.position.set(cx, fy, cz);
@@ -224,9 +224,12 @@ function buildInteriors(scene, W, peak) {
       c.position.set(Math.cos(a) * 10.5, 0.6, Math.sin(a) * 10.5);
       g.add(c);
     }
-    const lamp = new THREE.PointLight(cr.tint, 2.0, 46);
+    const lamp = new THREE.PointLight(cr.tint, 150, 70);
     lamp.position.set(0, 6, 0);
     g.add(lamp);
+    const fill = new THREE.PointLight(0xfff2dd, 40, 40);
+    fill.position.set(0, 2.5, 0);
+    g.add(fill);
     g.position.set(cr.cx, fy, cr.cz);
     scene.add(g);
     W.interiors.push({ id: 'cave', caveIndex: cr.caveIndex, name: cave.name, boss: cave.boss, x: cr.cx, z: cr.cz, r: 11.4, floorY: fy });
