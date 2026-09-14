@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { actionForKey, actionForMouseButton } from '../src/bindings.js';
+import { actionForKey, actionForMouseButton, resolveInsideE } from '../src/bindings.js';
 
 describe('ısırma girdisi', () => {
   it('Space ısırır', () => {
@@ -14,5 +14,11 @@ describe('ısırma girdisi', () => {
   });
   it('sol tık (0) pençedir', () => {
     assert.equal(actionForMouseButton(0), 'claw');
+  });
+  it('içeride E: et varsa ye', () => {
+    assert.equal(resolveInsideE(true), 'eat');
+  });
+  it('içeride E: et yoksa çık', () => {
+    assert.equal(resolveInsideE(false), 'exit');
   });
 });

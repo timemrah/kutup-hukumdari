@@ -6,7 +6,7 @@ import { clawPose, bitePose, CLAW_STRIKE_P, BITE_SNAP_P } from './attacks.js';
 import { collectSave, applySave, hasSave, loadSave, writeSave, clearSave } from './save.js';
 import { GameAudio } from './audio.js';
 import { moveVector, inAttackArc, separationDelta, clampToCircle, homeDirection } from './movement.js';
-import { actionForKey, actionForMouseButton } from './bindings.js';
+import { actionForKey, actionForMouseButton, resolveInsideE } from './bindings.js';
 
 const canvas = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -329,25 +329,32 @@ function exitInterior() {
   player.group.position.y = W.groundY(player.group.position.x, player.group.position.z);
   toast('Dışarı çıktın. Buz seni bekliyor.');
 }
+function tryEatMeat(pp) {
+  for (let i = meats.length - 1; i >= 0; i--) {
+    if (meats[i].mesh.position.distanceTo(pp) < 3) {
+      const big = meats[i].big;
+      scene.remove(meats[i].mesh); meats.splice(i, 1);
+      eatFood(big ? 45 : 25, big ? 40 : 20, big ? 'Boss eti' : 'Et');
+      return true;
+    }
+  }
+  return false;
+}
 function doInteract() {
   if (!S.started || S.paused || S.dead) return;
   const pp = player.group.position;
-  // içerideyken E = dışarı çık
-  if (S.inside) { exitInterior(); return; }
+  // içerideyken E: yakında et varsa ye, yoksa dışarı çık
+  if (S.inside) {
+    if (resolveInsideE(meats.some(m => m.mesh.position.distanceTo(pp) < 3)) === 'eat') { tryEatMeat(pp); return; }
+    exitInterior(); return;
+  }
   // in / mağara girişi (E ile girilir)
   const dd = denDoorPos();
   if (Math.hypot(pp.x - dd.x, pp.z - dd.z) < 7) { enterInterior(0); return; }
   const ci = caveMouthIndex(pp);
   if (ci >= 0) { enterInterior(1 + ci); return; }
   // yerde et
-  for (let i = meats.length - 1; i >= 0; i--) {
-    if (meats[i].mesh.position.distanceTo(pp) < 3) {
-      const big = meats[i].big;
-      scene.remove(meats[i].mesh); meats.splice(i, 1);
-      eatFood(big ? 45 : 25, big ? 40 : 20, big ? 'Boss eti' : 'Et');
-      return;
-    }
-  }
+  if (tryEatMeat(pp)) return;
   // balık tutma
   for (const w of W.waters) {
     const d = Math.hypot(pp.x - w.x, pp.z - w.z);
@@ -831,10 +838,10 @@ function animate() {
 
     // bağlam ipuçları
     const pp = player.group.position;
-    if (S.inside?.type === 'den') setPrompt('[E] Dışarı çık • [F] Uyu (can dolar, yaralar kapanır, kayıt alınır)');
+    if (S.inside?.type === 'den') setPrompt('[E] Ye / dışarı çık • [F] Uyu (can dolar, kayıt alınır)');
     else if (S.inside) {
       const rm = S.inside.room;
-      setPrompt('[E] Dışarı çık' + (rm.boss ? ' — dikkat, ' + rm.boss + ' burada!' : ''));
+      setPrompt('[E] Ye / dışarı çık' + (rm.boss ? ' — dikkat, ' + rm.boss + ' burada!' : ''));
     }
     else {
       const dd = denDoorPos();

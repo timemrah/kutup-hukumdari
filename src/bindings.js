@@ -20,3 +20,8 @@ export function actionForMouseButton(button) {
   if (button === 0) return 'claw';
   return null;
 }
+
+// İç odada E'nin anlamı: yakında et varsa ye, yoksa dışarı çık.
+export function resolveInsideE(hasMeatNearby) {
+  return hasMeatNearby ? 'eat' : 'exit';
+}
