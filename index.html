@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kutup Hükümdarı — Beyaz Sessizlik</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="./assets/index-B3Xi8S6v.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-C-FXc9IA.css">
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="vignette"></div>
+  <div id="snow-ui"></div>
+
+  <!-- Yükleme -->
+  <div id="loader" class="overlay show">
+    <div class="loader-card">
+      <div class="brand-mark">❄</div>
+      <h1>KUTUP HÜKÜMDARI</h1>
+      <p class="subtitle">BEYAZ SESSİZLİK</p>
+      <div class="loadbar"><div id="loadfill"></div></div>
+      <p id="loadtext">Buzullar şekilleniyor…</p>
+    </div>
+  </div>
+
+  <!-- Ana menü -->
+  <div id="menu" class="overlay">
+    <div class="menu-bg"></div>
+    <div class="menu-panel">
+      <div class="menu-top"><span>❄ PREMIUM ARCTIC EDITION ❄</span></div>
+      <h1 class="game-title">KUTUP<br>HÜKÜMDARI</h1>
+      <p class="tagline">Bir kutup ayısısın. Avlan, güçlen, aileni koru ve buzun hükümdarı ol.</p>
+      <div class="menu-buttons">
+        <button id="btn-continue" class="btn gold hidden">DEVAM ET</button>
+        <button id="btn-start" class="btn gold">YENİ OYUN</button>
+        <button id="btn-how" class="btn ghost">NASIL OYNANIR</button>
+        <button id="btn-settings" class="btn ghost">AYARLAR</button>
+      </div>
+      <div class="menu-foot">
+        <span>WASD hareket</span><i>•</i><span>Sol tık pençe / Space ısırma</span><i>•</i><span>E balık / ye / gir</span><i>•</i><span>F uyu</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nasıl oynanır -->
+  <div id="howto" class="overlay">
+    <div class="sheet">
+      <h2>Nasıl Oynanır</h2>
+      <div class="how-grid">
+        <div><b>WASD / Oklar</b><span>Yürü. <b>Shift</b> ile koş.</span></div>
+        <div><b>Fare</b><span>Kamerayı döndür (sürükle). Tekerlek yakınlaştırır.</span></div>
+        <div><b>Sol Tık — Pençe</b><span>Hızlı, geniş alanlı vuruş.</span></div>
+        <div><b>Space / V — Isırma</b><span>Yakın mesafe ağır hasar.</span></div>
+        <div><b>E — Balık / Ye / Gir-Çık</b><span>İnce buzda E ile balık tut, etlerde E ile ye. İn ve mağara kapılarında E ile gir, içeride E ile çık.</span></div>
+        <div><b>F — Uyu</b><span>İninde (dış kapıda ya da iç odada) F ile uyu, sabah dinç uyan. Boss'lar mağara içlerindedir.</span></div>
+        <div><b>Gündüz döngüsü</b><span>Akşam hava kızarır. Gece tehlikelidir; inine dön.</span></div>
+        <div><b>Güçlenme</b><span>Yedikçe Güç + Seviye artar, pençen sertleşir. Yaraların (kırmızı izler) uykuda kapanır.</span></div>
+      </div>
+      <button id="btn-how-back" class="btn gold">GERİ DÖN</button>
+    </div>
+  </div>
+
+  <!-- Ayarlar -->
+  <div id="settings" class="overlay">
+    <div class="sheet">
+      <h2>Ayarlar</h2>
+      <label class="row"><span>Kalite</span><select id="set-quality"><option value="high">Yüksek</option><option value="medium" selected>Orta</option><option value="low">Düşük</option></select></label>
+      <label class="row"><span>Kar yoğunluğu</span><input id="set-snow" type="range" min="0" max="100" value="60"></label>
+      <label class="row"><span>Ses</span><input id="set-sound" type="range" min="0" max="100" value="70"></label>
+      <label class="row"><span>Fare hassasiyeti</span><input id="set-sens" type="range" min="20" max="200" value="100"></label>
+      <button id="btn-settings-back" class="btn gold">KAYDET VE DÖN</button>
+    </div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="hud-tl">
+      <div class="stat"><span class="ico">❤</span><div class="bar"><div id="hp"></div></div><b id="hp-t">100</b></div>
+      <div class="stat"><span class="ico">🍖</span><div class="bar"><div id="hunger"></div></div><b id="hunger-t">100</b></div>
+      <div class="stat"><span class="ico">⚔</span><div class="bar"><div id="xp"></div></div><b id="lvl-t">Sv 1</b></div>
+      <div id="power">Pençe 12 • Isırma 22 • Güç 1.0x</div>
+    </div>
+    <div id="hud-tc">
+      <div id="clock">☀ 08:00 • 1. Gün</div>
+      <div id="objective">İnce buzda balık yakala (mavi göletlere git)</div>
+    </div>
+    <div id="hud-tr">
+      <div id="compass">K</div>
+      <div id="fish-count">🐟 0</div>
+    </div>
+    <div id="crosshair">+</div>
+    <div id="prompt"></div>
+    <div id="toast-wrap"></div>
+    <div id="bossbar" class="hidden"><span id="bossname"></span><div class="bar"><div id="bosshp"></div></div></div>
+    <div id="controls-hint">WASD kameraya göre yürü • Shift koş • Sol pençe • Space ısır • E ye/balık/gir • F uyu • P duraklat</div>
+  </div>
+
+  <!-- Duraklatma -->
+  <div id="pause" class="overlay">
+    <div class="sheet">
+      <h2>Duraklatıldı</h2>
+      <p class="muted">Buz seni bekler, hükümdar.</p>
+      <button id="btn-resume" class="btn gold">DEVAM ET</button>
+      <button id="btn-quit" class="btn ghost">ANA MENÜ</button>
+    </div>
+  </div>
+
+  <!-- Ölüm / zafer -->
+  <div id="end" class="overlay">
+    <div class="sheet">
+      <h2 id="end-title">Yere Yığıldın</h2>
+      <p id="end-text" class="muted"></p>
+      <button id="btn-again" class="btn gold">TEKRAR DOĞ</button>
+      <button id="btn-end-menu" class="btn ghost">ANA MENÜ</button>
+    </div>
+  </div>
+
+</body>
+</html>
