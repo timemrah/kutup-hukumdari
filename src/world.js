@@ -140,9 +140,97 @@ export function buildWorld(scene, opts = {}) {
   W.denPos.y = peak(-8, 52);
   buildDen(scene, W);
   buildCaves(scene, W, peak);
+  buildInteriors(scene, W, peak);
   buildSky(scene, W);
   buildSnowfall(scene, W, quality);
   return W;
+}
+
+// Ayrı iç alanlar: E ile girilir, dış dünyadan uzakta kendi odaları vardır.
+function buildInteriors(scene, W, peak) {
+  W.interiors = [];
+  const snowIn = new THREE.MeshStandardMaterial({ color: 0xeef6fb, roughness: 0.95, side: THREE.DoubleSide });
+  const rockIn = new THREE.MeshStandardMaterial({ color: 0x4a5560, roughness: 1, flatShading: true, side: THREE.DoubleSide });
+
+  // --- Ayı ini (sıcak iglo) ---
+  {
+    const cx = 400, cz = 400, fy = peak(cx, cz);
+    const g = new THREE.Group();
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(9, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2), snowIn);
+    dome.castShadow = dome.receiveShadow = true;
+    g.add(dome);
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(8.6, 28), new THREE.MeshStandardMaterial({ color: 0xdfe9f0, roughness: 1 }));
+    floor.rotation.x = -Math.PI / 2; floor.position.y = 0.05; floor.receiveShadow = true;
+    g.add(floor);
+    const rug = new THREE.Mesh(new THREE.CircleGeometry(2.6, 22), new THREE.MeshStandardMaterial({ color: 0x8a6b4f, roughness: 1 }));
+    rug.rotation.x = -Math.PI / 2; rug.position.y = 0.1;
+    g.add(rug);
+    // kapı süsü (güney duvarı, içeriden görünür)
+    const door = new THREE.Mesh(new THREE.CircleGeometry(1.7, 20, 0, Math.PI), new THREE.MeshBasicMaterial({ color: 0x060b12, side: THREE.DoubleSide }));
+    door.position.set(0, 0.4, 8.4); door.rotation.y = Math.PI;
+    g.add(door);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(1.9, 0.4, 10, 20, Math.PI), new THREE.MeshStandardMaterial({ color: 0xd8b46a, roughness: 0.6, side: THREE.DoubleSide }));
+    rim.position.set(0, 0.4, 8.35); rim.rotation.y = Math.PI;
+    g.add(rim);
+    // kemik yığını süsü
+    const boneM = new THREE.MeshStandardMaterial({ color: 0xf2ead8, roughness: 0.8 });
+    for (let i = 0; i < 4; i++) {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.1 + (i % 2) * 0.5), boneM);
+      b.rotation.set(Math.PI / 2, 0, i * 0.8);
+      b.position.set(-4.5 + (i % 2) * 0.6, 0.15, -3 + i * 0.5);
+      g.add(b);
+    }
+    const lamp = new THREE.PointLight(0xffc98a, 2.4, 26);
+    lamp.position.set(0, 4, 0);
+    g.add(lamp);
+    g.position.set(cx, fy, cz);
+    scene.add(g);
+    W.interiors.push({ id: 'den', name: 'Ayı İni', x: cx, z: cz, r: 7.4, floorY: fy });
+  }
+
+  // --- Mağara içleri (boss arenaları) ---
+  const caveRooms = [
+    { cx: 430, cz: -430, caveIndex: 0, tint: 0x7fd4ff },
+    { cx: -430, cz: 430, caveIndex: 1, tint: 0x9fd4a8 },
+  ];
+  for (const cr of caveRooms) {
+    const fy = peak(cr.cx, cr.cz);
+    const cave = W.caves[cr.caveIndex];
+    const g = new THREE.Group();
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(13, 13.6, 10, 20, 1, true), rockIn);
+    wall.position.y = 5; wall.castShadow = wall.receiveShadow = true;
+    g.add(wall);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(14.5, 8, 14), rockIn);
+    roof.position.y = 14; roof.castShadow = true;
+    g.add(roof);
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(13, 28), new THREE.MeshStandardMaterial({ color: 0x9fb2bd, roughness: 1, side: THREE.DoubleSide }));
+    floor.rotation.x = -Math.PI / 2; floor.position.y = 0.05; floor.receiveShadow = true;
+    g.add(floor);
+    // sarkıtlar
+    const spikeM = new THREE.MeshStandardMaterial({ color: 0xcfeef8, roughness: 0.3 });
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2 + 0.3;
+      const rr = 4 + (i % 3) * 2.6;
+      const s = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2 + (i % 4), 7), spikeM);
+      s.rotation.x = Math.PI;
+      s.position.set(Math.cos(a) * rr, 8.2, Math.sin(a) * rr);
+      g.add(s);
+    }
+    // parlayan kristaller
+    const cryM = new THREE.MeshStandardMaterial({ color: 0xd8f6ff, emissive: cr.tint, emissiveIntensity: 0.9, roughness: 0.2 });
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + 0.9;
+      const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.45, 0), cryM);
+      c.position.set(Math.cos(a) * 10.5, 0.6, Math.sin(a) * 10.5);
+      g.add(c);
+    }
+    const lamp = new THREE.PointLight(cr.tint, 2.0, 46);
+    lamp.position.set(0, 6, 0);
+    g.add(lamp);
+    g.position.set(cr.cx, fy, cr.cz);
+    scene.add(g);
+    W.interiors.push({ id: 'cave', caveIndex: cr.caveIndex, name: cave.name, boss: cave.boss, x: cr.cx, z: cr.cz, r: 11.4, floorY: fy });
+  }
 }
 
 function buildDen(scene, W) {
@@ -212,7 +300,10 @@ function buildCaves(scene, W, peak) {
     grp.position.set(d.x, y, d.z);
     grp.lookAt(0, y, 0);
     scene.add(grp);
-    W.caves.push({ ...d, r: 6, group: grp, y });
+    // ağız dünyası konumu: mağara merkezinden ovaya doğru ~7.5m (grup +Z ovaya bakar)
+    const mdx = 0 - d.x, mdz = 0 - d.z;
+    const mdd = Math.hypot(mdx, mdz) || 1;
+    W.caves.push({ ...d, r: 6, group: grp, y, mouth: { x: d.x + (mdx / mdd) * 7.5, z: d.z + (mdz / mdd) * 7.5 } });
     W.colliders.push({ x: d.x, z: d.z, r: 5.5 });
   }
 }
@@ -229,8 +320,10 @@ function buildSky(scene, W) {
       'c+=vec3(1.0,0.6,0.35)*pow(s,6.0)*0.12; gl_FragColor=vec4(c,1.0); }'
   });
   const sky = new THREE.Mesh(skyGeo, skyMat);
+  sky.frustumCulled = false;
   scene.add(sky);
   W.skyMat = skyMat;
+  W.skyMesh = sky; // iç alanlara ışınlanınca kamerayı takip eder
   // yıldızlar
   const n = 700, p = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
@@ -260,6 +353,7 @@ function buildSky(scene, W) {
   aur.rotation.x = 0.25;
   scene.add(aur);
   W.aurora = am;
+  W.auroraMesh = aur;
   // ay
   const moonM = new THREE.Mesh(new THREE.SphereGeometry(14, 20, 20), new THREE.MeshBasicMaterial({ color: 0xe8f1ff, fog: false }));
   moonM.position.set(-260, 240, -240);

@@ -5,7 +5,7 @@ import { makePenguin, makeWolf, makeFox, makeWalrus, makeFish, makeMeat, showWou
 import { clawPose, bitePose, CLAW_STRIKE_P, BITE_SNAP_P } from './attacks.js';
 import { collectSave, applySave, hasSave, loadSave, writeSave, clearSave } from './save.js';
 import { GameAudio } from './audio.js';
-import { moveVector, inAttackArc } from './movement.js';
+import { moveVector, inAttackArc, separationDelta, clampToCircle } from './movement.js';
 import { actionForKey, actionForMouseButton } from './bindings.js';
 
 const canvas = document.getElementById('scene');
@@ -45,7 +45,7 @@ const S = {
   facing: Math.PI,
   keys: {}, attackCd: 0, biteCd: 0, hurtCd: 0, eatCd: 0,
   clawHitDone: true, clawFxDone: true, biteHitDone: true,
-  inCave: null, sleptToday: false, kills: 0, bossesDown: 0,
+  inside: null, outsidePos: null, sleptToday: false, kills: 0, bossesDown: 0,
   started: false,
 };
 const player = makePolarBear({});
@@ -96,18 +96,21 @@ function spawnEnemy(kind, x, z, boss = false) {
       for (const m of ms) { if (m && 'emissive' in m) mats.add(m); }
     }
   });
-  const e = { kind, boss, ...base, maxHp: base.hp, model, atkCd: Math.random(), wander: Math.random() * 6, alive: true, bar, mats: [...mats], flash: 0, lunge: 0, lastHit: -99, name: boss ? (kind === 'wolf' ? 'Alfa Kurt' : 'Dev Mors') : ({ wolf: 'Kutup Kurdu', fox: 'Kutup Tilkisi', walrus: 'Mors' })[kind] };
+  const radius = (kind === 'wolf' ? 1.0 : kind === 'fox' ? 0.65 : 1.5) * (boss ? 1.4 : 1);
+  const e = { kind, boss, ...base, maxHp: base.hp, model, atkCd: Math.random(), wander: Math.random() * 6, alive: true, bar, mats: [...mats], flash: 0, lunge: 0, lastHit: -99, radius, roomIndex: null, name: boss ? (kind === 'wolf' ? 'Alfa Kurt' : 'Dev Mors') : ({ wolf: 'Kutup Kurdu', fox: 'Kutup Tilkisi', walrus: 'Mors' })[kind] };
   enemies.push(e);
   return e;
 }
 spawnEnemy('wolf', 40, -10); spawnEnemy('wolf', -50, -20); spawnEnemy('fox', 15, 40);
 spawnEnemy('fox', -20, -35); spawnEnemy('walrus', 34, 26); spawnEnemy('wolf', -10, -60);
 spawnEnemy('fox', 55, 45);
-const bossDefs = [{ kind: 'wolf', cave: 0 }, { kind: 'walrus', cave: 1 }];
+// Boss'lar mağara İÇLERİNDE hüküm sürer (E ile girilen ayrı arenalar)
+const bossDefs = [{ kind: 'wolf', room: 1 }, { kind: 'walrus', room: 2 }];
 for (const b of bossDefs) {
-  const c = W.caves[b.cave];
-  const dirx = c.x * 0.85, dirz = c.z * 0.85;
-  spawnEnemy(b.kind, dirx, dirz, true);
+  const room = W.interiors[b.room];
+  const e = spawnEnemy(b.kind, room.x + 3, room.z - 2, true);
+  e.roomIndex = b.room;
+  e.model.group.position.y = room.floorY;
 }
 
 // balıklar (her gölette 5)
@@ -199,8 +202,15 @@ function damageEnemy(e, dmg, kind) {
   if (away.lengthSq() > 1e-6) {
     away.normalize();
     e.model.group.position.addScaledVector(away, e.boss ? 0.5 : 1.5);
-    collide(e.model.group.position, 1.0);
-    e.model.group.position.y = W.groundY(e.model.group.position.x, e.model.group.position.z);
+    if (e.roomIndex != null) {
+      const r = W.interiors[e.roomIndex];
+      const c = clampToCircle(e.model.group.position.x, e.model.group.position.z, r.x, r.z, r.r);
+      if (c) { e.model.group.position.x = c.x; e.model.group.position.z = c.z; }
+      e.model.group.position.y = r.floorY;
+    } else {
+      collide(e.model.group.position, 1.0);
+      e.model.group.position.y = W.groundY(e.model.group.position.x, e.model.group.position.z);
+    }
   }
   audio.ensure();
   if (e.hp <= 0) {
@@ -288,9 +298,45 @@ function eatFood(heal, xp, label) {
   gainXp(xp);
   toast(label + ' yedin. (+' + heal + ' can, +' + xp + ' XP)');
 }
+// İn kapısı (dışarıda, inin ağzı önü)
+function denDoorPos() { return { x: W.denPos.x, z: W.denPos.z + 7 }; }
+// Mağara ağzı yakınlık testi -> mağara indisi, yoksa -1
+function caveMouthIndex(pp) {
+  for (let i = 0; i < W.caves.length; i++) {
+    const m = W.caves[i].mouth;
+    if (Math.hypot(pp.x - m.x, pp.z - m.z) < 9) return i;
+  }
+  return -1;
+}
+function enterInterior(i) {
+  const room = W.interiors[i];
+  S.outsidePos = player.group.position.clone();
+  S.inside = { type: room.id, index: i, room };
+  player.group.position.set(room.x, room.floorY, room.z + room.r * 0.4);
+  // kamera arkanda, yüzün oda merkezine dönük
+  S.yaw = Math.atan2(player.group.position.x - room.x, player.group.position.z - room.z);
+  S.facing = Math.atan2(room.x - player.group.position.x, room.z - player.group.position.z);
+  audio.ensure();
+  toast(room.id === 'den' ? '🛖 İnindesin. F ile uyu, E ile dışarı çık.' : '🕳 ' + room.name + 'ndesin! ' + room.boss + ' burada hüküm sürüyor… E ile kaçabilirsin.');
+}
+function exitInterior() {
+  if (!S.inside) return;
+  player.group.position.copy(S.outsidePos);
+  S.outsidePos = null;
+  S.inside = null;
+  player.group.position.y = W.groundY(player.group.position.x, player.group.position.z);
+  toast('Dışarı çıktın. Buz seni bekliyor.');
+}
 function doInteract() {
   if (!S.started || S.paused || S.dead) return;
   const pp = player.group.position;
+  // içerideyken E = dışarı çık
+  if (S.inside) { exitInterior(); return; }
+  // in / mağara girişi (E ile girilir)
+  const dd = denDoorPos();
+  if (Math.hypot(pp.x - dd.x, pp.z - dd.z) < 7) { enterInterior(0); return; }
+  const ci = caveMouthIndex(pp);
+  if (ci >= 0) { enterInterior(1 + ci); return; }
   // yerde et
   for (let i = meats.length - 1; i >= 0; i--) {
     if (meats[i].mesh.position.distanceTo(pp) < 3) {
@@ -330,17 +376,14 @@ function respawnFish(w) {
   fishes.push({ mesh: f, water: w, t: 0, alive: true });
 }
 function doAction() {
+  // F = uyu (inde: dış kapıda ya da iç odada). Mağaraya giriş E ile.
   if (!S.started || S.paused || S.dead) return;
   const pp = player.group.position;
-  if (pp.distanceTo(W.denPos) < 8) { sleep(); return; }
-  for (let i = 0; i < W.caves.length; i++) {
-    const c = W.caves[i];
-    if (Math.hypot(pp.x - c.x, pp.z - c.z) < 14) {
-      S.inCave = S.inCave === i ? null : i;
-      toast(S.inCave === i ? '🕳 ' + c.name + 'ne girdin! ' + c.boss + ' seni bekliyor…' : 'Mağaradan çıktın.');
-      return;
-    }
+  if (S.inside) {
+    if (S.inside.type === 'den') sleep();
+    return;
   }
+  if (pp.distanceTo(W.denPos) < 9) { sleep(); return; }
 }
 function sleep() {
   const evening = S.time > 17 || S.time < 6;
@@ -360,8 +403,8 @@ function updateObjective() {
   const o = $('objective');
   if (S.bossesDown >= 2) o.textContent = 'Efsane tamamlandı — buzun hükümdarısın!';
   else if (S.fish < 2) o.textContent = 'İnce buzda balık yakala (mavi göletlere git, E)';
-  else if (S.kills < 2) o.textContent = 'Kurtlara karşı pençeni dene (Sol tık / Sağ tık)';
-  else if (S.bossesDown < 1) o.textContent = 'Gizemli mağaraları bul: Fısıltı Mağarası ve Dev Mors İni (F ile gir)';
+  else if (S.kills < 2) o.textContent = 'Kurtlara karşı pençeni dene (Sol tık pençe, Space ısırma)';
+  else if (S.bossesDown < 1) o.textContent = 'Gizemli mağaraları bul: Fısıltı Mağarası ve Dev Mors İni (E ile gir, boss içeride)';
   else o.textContent = 'Son boss: diğer mağarayı fethet. Akşam ininde uyumayı unutma.';
 }
 function togglePause(force) {
@@ -387,8 +430,18 @@ function startGame(useSave) {
     const sv = loadSave();
     if (sv) {
       applySave(S, sv);
-      player.group.position.set(S.px ?? -8, 0, S.pz ?? 44);
-      player.group.position.y = W.groundY(player.group.position.x, player.group.position.z);
+      // kayıt bir iç odadaysa orada devam et (çıkış iniş kapısına döner)
+      const ri = W.interiors.findIndex(r => Math.hypot((S.px ?? -8) - r.x, (S.pz ?? 44) - r.z) < r.r + 2);
+      if (ri >= 0) {
+        const room = W.interiors[ri];
+        S.inside = { type: room.id, index: ri, room };
+        S.outsidePos = new THREE.Vector3(W.denPos.x, 0, W.denPos.z + 8);
+        S.outsidePos.y = W.groundY(S.outsidePos.x, S.outsidePos.z);
+        player.group.position.set(S.px, room.floorY, S.pz);
+      } else {
+        player.group.position.set(S.px ?? -8, 0, S.pz ?? 44);
+        player.group.position.y = W.groundY(player.group.position.x, player.group.position.z);
+      }
       setWoundLevel(player, S.hp / S.maxHp);
       document.getElementById('fish-count').textContent = '🐟 ' + S.fish;
       toast('Kaldığın yerden devam: ' + S.day + '. gün, Sv ' + S.level + '.');
@@ -466,6 +519,64 @@ function collide(p, r = 1.2) {
   p.x = Math.max(-lim, Math.min(lim, p.x));
   p.z = Math.max(-lim, Math.min(lim, p.z));
 }
+// Oyuncuyu zemine oturt: iç odadaysa oda tabanı, yoksa arazi/su.
+function snapPlayerToGround(moving) {
+  const p = player.group.position;
+  if (S.inside) { p.y = S.inside.room.floorY; return; }
+  collide(p);
+  p.y = W.groundY(p.x, p.z);
+  for (const w of W.waters) {
+    if (Math.hypot(p.x - w.x, p.z - w.z) < w.r) {
+      p.y = w.y - 0.25;
+      if (moving && Math.random() < 0.1) burst(p.clone(), 0xbfe9f5, 2, 2);
+      break;
+    }
+  }
+}
+// Temaslı ayrışma: kimse kimsenin içine girmez, temas eder.
+function separateEntities() {
+  const P = player.group.position;
+  for (let iter = 0; iter < 2; iter++) {
+    for (const e of enemies) {
+      if (!e.alive) continue;
+      const ep = e.model.group.position;
+      const d = separationDelta(P.x, P.z, ep.x, ep.z, 1.1 + e.radius - 0.35, 0.7);
+      if (d) { P.x += d.ax; P.z += d.az; ep.x += d.bx; ep.z += d.bz; }
+    }
+    for (let i = 0; i < enemies.length; i++) {
+      for (let j = i + 1; j < enemies.length; j++) {
+        const a = enemies[i], b = enemies[j];
+        if (!a.alive || !b.alive) continue;
+        const ap = a.model.group.position, bp = b.model.group.position;
+        const d = separationDelta(ap.x, ap.z, bp.x, bp.z, a.radius + b.radius - 0.35, 0.5);
+        if (d) { ap.x += d.ax; ap.z += d.az; bp.x += d.bx; bp.z += d.bz; }
+      }
+    }
+    // penguenler ve dişi ayı yol verir (oyuncu ağır basar)
+    if (!S.inside) {
+      for (const pg of penguins) {
+        const mp = pg.mesh.position;
+        const d = separationDelta(P.x, P.z, mp.x, mp.z, 1.1 + 0.5 - 0.3, 1);
+        if (d) { mp.x += d.bx; mp.z += d.bz; }
+      }
+      const fp = female.group.position;
+      const df = separationDelta(P.x, P.z, fp.x, fp.z, 1.1 + 0.9 - 0.35, 1);
+      if (df) { fp.x += df.bx; fp.z += df.bz; }
+    }
+  }
+  // oda duvarları: içeridekiler odada kalır
+  if (S.inside) {
+    const r = S.inside.room;
+    const c = clampToCircle(P.x, P.z, r.x, r.z, r.r);
+    if (c) { P.x = c.x; P.z = c.z; }
+  }
+  for (const e of enemies) {
+    if (!e.alive || e.roomIndex == null) continue;
+    const r = W.interiors[e.roomIndex];
+    const c = clampToCircle(e.model.group.position.x, e.model.group.position.z, r.x, r.z, r.r);
+    if (c) { e.model.group.position.x = c.x; e.model.group.position.z = c.z; }
+  }
+}
 const clock = new THREE.Clock();
 let elapsed = 0, loadP = 0, saveTimer = 0;
 function updateHUD() {
@@ -534,19 +645,7 @@ function animate() {
       S.hunger = Math.max(0, S.hunger - dt * (run ? 1.1 : 0.45));
       if (S.hunger <= 0) { S.hp -= dt * 2; setWoundLevel(player, S.hp / S.maxHp); }
     }
-    collide(player.group.position);
-    player.group.position.y = W.groundY(player.group.position.x, player.group.position.z);
-    // suda yavaşlama + efekt
-    let inWater = false;
-    for (const w of W.waters) {
-      if (Math.hypot(player.group.position.x - w.x, player.group.position.z - w.z) < w.r) {
-        inWater = true;
-        player.group.position.y = w.y - 0.25;
-        if (moving && Math.random() < 0.1) burst(player.group.position.clone(), 0xbfe9f5, 2, 2);
-        break;
-      }
-    }
-    void inWater;
+    snapPlayerToGround(moving);
     animateBear(player, elapsed, moving, run);
     // --- saldırı pozları (tek pençe + ısırma) ---
     let twist = 0, rear = 0, lean = 0;
@@ -592,14 +691,7 @@ function animate() {
       player.jaw.position.copy(player.jaw.userData.basePos);
     }
     // saldırı adımı sonrası zemine yeniden oturt
-    collide(player.group.position);
-    {
-      let py = W.groundY(player.group.position.x, player.group.position.z);
-      for (const w of W.waters) {
-        if (Math.hypot(player.group.position.x - w.x, player.group.position.z - w.z) < w.r) { py = w.y - 0.25; break; }
-      }
-      player.group.position.y = py;
-    }
+    snapPlayerToGround(moving);
     // gövde kompozisyonu: bakış yönü + vuruş bükülmesi
     player.group.rotation.y = S.facing + twist;
     player.group.rotation.x = rear;
@@ -675,8 +767,16 @@ function animate() {
         e.lunge = Math.max(0, e.lunge - dt * 3);
         ep.x += mvx * 4 * dt * e.lunge; ep.z += mvz * 4 * dt * e.lunge;
       }
-      collide(ep, 1.0);
-      ep.y = W.groundY(ep.x, ep.z);
+      if (e.roomIndex != null) {
+        // oda sakini: arenasında kalır, taban düzdür
+        const r = W.interiors[e.roomIndex];
+        const c = clampToCircle(ep.x, ep.z, r.x, r.z, r.r);
+        if (c) { ep.x = c.x; ep.z = c.z; }
+        ep.y = r.floorY;
+      } else {
+        collide(ep, 1.0);
+        ep.y = W.groundY(ep.x, ep.z);
+      }
       if (mvx || mvz) e.model.group.rotation.y = Math.atan2(mvx, mvz);
       // bacak animasyonu
       if (e.model.legs.length) e.model.legs.forEach((l, i) => { l.rotation.x = Math.sin(elapsed * 9 + i * Math.PI) * 0.5; });
@@ -690,6 +790,9 @@ function animate() {
         for (const m of e.mats) { m.emissive.setHex(0xffffff); m.emissiveIntensity = e.flash * 0.55; }
       }
     }
+    // temas: kimse kimsenin içine girmez
+    separateEntities();
+    snapPlayerToGround(moving);
     if (bossNear) {
       $('bossbar').classList.remove('hidden');
       $('bossname').textContent = '👑 ' + bossNear.name;
@@ -724,12 +827,18 @@ function animate() {
 
     // bağlam ipuçları
     const pp = player.group.position;
-    if (pp.distanceTo(W.denPos) < 8) setPrompt((S.time > 17 || S.time < 6 ? '🌙 Akşam oldu — ' : '🛖 ') + '[F] İnde uyu (can dolar, yaralar kapanır)');
-    else if (W.waters.some(w => Math.hypot(pp.x - w.x, pp.z - w.z) < w.r + 2.5)) setPrompt('[E] Balık yakala — suya yaklaş, balığı bekle');
-    else if (meats.some(m => m.mesh.position.distanceTo(pp) < 3.5)) setPrompt('[E] Eti ye — güçlen');
+    if (S.inside?.type === 'den') setPrompt('[E] Dışarı çık • [F] Uyu (can dolar, yaralar kapanır, kayıt alınır)');
+    else if (S.inside) {
+      const rm = S.inside.room;
+      setPrompt('[E] Dışarı çık' + (rm.boss ? ' — dikkat, ' + rm.boss + ' burada!' : ''));
+    }
     else {
-      const ci = W.caves.findIndex(c => Math.hypot(pp.x - c.x, pp.z - c.z) < 14);
-      if (ci >= 0) setPrompt('[F] ' + (S.inCave === ci ? 'Mağaradan çık' : W.caves[ci].name + 'ne gir — boss: ' + W.caves[ci].boss));
+      const dd = denDoorPos();
+      const ci = caveMouthIndex(pp);
+      if (Math.hypot(pp.x - dd.x, pp.z - dd.z) < 7) setPrompt('[E] İne gir' + (pp.distanceTo(W.denPos) < 9 ? ' • [F] Burada uyu' : ''));
+      else if (ci >= 0) setPrompt('[E] ' + W.caves[ci].name + 'ne gir — boss ' + W.caves[ci].boss + ' içeride!');
+      else if (W.waters.some(w => Math.hypot(pp.x - w.x, pp.z - w.z) < w.r + 2.5)) setPrompt('[E] Balık yakala — suya yaklaş, balığı bekle');
+      else if (meats.some(m => m.mesh.position.distanceTo(pp) < 3.5)) setPrompt('[E] Eti ye — güçlen');
       else if (female.group.position.distanceTo(pp) < 4.5) setPrompt('[E] Dişi ayıyla konuş');
       else if (enemies.some(e => e.alive && e.model.group.position.distanceTo(pp) < 6)) setPrompt('Sol tık: Pençe • Space / V: Isırma');
       else setPrompt('');
@@ -745,8 +854,13 @@ function animate() {
     const cx = p.x + Math.sin(S.yaw) * Math.cos(S.pitch) * S.dist;
     const cz = p.z + Math.cos(S.yaw) * Math.cos(S.pitch) * S.dist;
     const cy = p.y + 2 + Math.sin(S.pitch) * S.dist;
-    camera.position.lerp(new THREE.Vector3(cx, Math.max(cy, W.groundY(cx, cz) + 1.2), cz), 0.12);
+    camera.position.lerp(new THREE.Vector3(cx, Math.max(cy, p.y - 3), cz), 0.12);
     camera.lookAt(p.x, p.y + 1.8, p.z);
+    // gök kubbe iç alanlara ışınlanınca da üstümüzde dursun
+    W.skyMesh.position.copy(camera.position);
+    W.stars.position.copy(camera.position);
+    W.moonMesh.position.set(camera.position.x - 260, camera.position.y + 240, camera.position.z - 240);
+    W.auroraMesh.position.set(camera.position.x, camera.position.y + 190, camera.position.z - 320);
   }
   renderer.render(scene, camera);
 }

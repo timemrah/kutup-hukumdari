@@ -31,3 +31,25 @@ export function inAttackArc(dx, dz, fx, fz, arc) {
   const dot = Math.max(-1, Math.min(1, d.x * f.x + d.z * f.z));
   return Math.acos(dot) < arc;
 }
+
+// Temaslı itme: iki daire iç içeyse birbirinden ayırır (içine girme yok).
+// pushB: b'nin aldığı pay (0..1). Çakışma yoksa / merkezler aynıysa null.
+export function separationDelta(ax, az, bx, bz, minD, pushB = 0.5) {
+  const dx = bx - ax, dz = bz - az;
+  const d = Math.hypot(dx, dz);
+  if (d >= minD || d < 1e-6) return null;
+  const need = minD - d;
+  const nx = dx / d, nz = dz / d;
+  return {
+    ax: -nx * need * (1 - pushB), az: -nz * need * (1 - pushB),
+    bx: nx * need * pushB, bz: nz * need * pushB,
+  };
+}
+
+// Daire sınıra kelepçele (oda duvarı): içerideyse null, dışarıdaysa izdüşüm.
+export function clampToCircle(x, z, cx, cz, r) {
+  const dx = x - cx, dz = z - cz;
+  const d = Math.hypot(dx, dz);
+  if (d <= r) return null;
+  return { x: cx + (dx / d) * r, z: cz + (dz / d) * r };
+}
