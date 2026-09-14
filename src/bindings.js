@@ -25,3 +25,10 @@ export function actionForMouseButton(button) {
 export function resolveInsideE(hasMeatNearby) {
   return hasMeatNearby ? 'eat' : 'exit';
 }
+
+// İn odasında E: et > dişi ayıyla sohbet > dışarı çık.
+export function resolveDenE(hasMeatNearby, nearMate) {
+  if (hasMeatNearby) return 'eat';
+  if (nearMate) return 'chat';
+  return 'exit';
+}

@@ -6,7 +6,7 @@ import { clawPose, bitePose, CLAW_STRIKE_P, BITE_SNAP_P } from './attacks.js';
 import { collectSave, applySave, hasSave, loadSave, writeSave, clearSave } from './save.js';
 import { GameAudio } from './audio.js';
 import { moveVector, inAttackArc, separationDelta, clampToCircle, homeDirection } from './movement.js';
-import { actionForKey, actionForMouseButton, resolveInsideE } from './bindings.js';
+import { actionForKey, actionForMouseButton, resolveInsideE, resolveDenE } from './bindings.js';
 
 const canvas = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -43,7 +43,7 @@ const S = {
   clawDmg: 12, biteDmg: 24,
   yaw: 0, pitch: 0.32, dist: 9,
   facing: Math.PI,
-  keys: {}, attackCd: 0, biteCd: 0, hurtCd: 0, eatCd: 0,
+  keys: {}, attackCd: 0, biteCd: 0, hurtCd: 0, eatCd: 0, chatCd: 0,
   clawHitDone: true, clawFxDone: true, biteHitDone: true,
   inside: null, outsidePos: null, sleptToday: false, kills: 0, bossesDown: 0,
   started: false,
@@ -53,8 +53,10 @@ player.group.position.set(-8, 0, 44);
 scene.add(player.group);
 
 const female = makePolarBear({ female: true });
-female.group.position.set(-4, 0, 48);
-female.group.rotation.y = -0.6;
+// Dişi ayı inin İÇ odasında yaşar (dış höyüğe gömülme yok)
+const DEN_ROOM = W.interiors[0];
+female.group.position.set(DEN_ROOM.x - 2.5, DEN_ROOM.floorY, DEN_ROOM.z - 1);
+female.group.rotation.y = 0.56;
 scene.add(female.group);
 
 // penguenler
@@ -343,9 +345,14 @@ function tryEatMeat(pp) {
 function doInteract() {
   if (!S.started || S.paused || S.dead) return;
   const pp = player.group.position;
-  // içerideyken E: yakında et varsa ye, yoksa dışarı çık
+  // içerideyken E: inde et > sohbet > çık, mağarada et > çık
   if (S.inside) {
-    if (resolveInsideE(meats.some(m => m.mesh.position.distanceTo(pp) < 3)) === 'eat') { tryEatMeat(pp); return; }
+    const hasMeat = meats.some(m => m.mesh.position.distanceTo(pp) < 3);
+    if (S.inside.type === 'den') {
+      const what = resolveDenE(hasMeat, female.group.position.distanceTo(pp) < 3.5);
+      if (what === 'eat') { tryEatMeat(pp); return; }
+      if (what === 'chat') { chatFemale(); return; }
+    } else if (resolveInsideE(hasMeat) === 'eat') { tryEatMeat(pp); return; }
     exitInterior(); return;
   }
   // in / mağara girişi (E ile girilir)
@@ -371,12 +378,15 @@ function doInteract() {
       return;
     }
   }
-  // dişi ayı ile etkileşim
-  if (female.group.position.distanceTo(pp) < 4) {
-    S.hp = Math.min(S.maxHp, S.hp + 10);
-    toast('Dişi ayı seni karşıladı. Moral +10 can. “Mağaralara dikkat et…”');
-    audio.sleep();
-  }
+  // dişi ayı ile etkileşim (artık inde yaşıyor; dışarıda denk gelinmez)
+  if (female.group.position.distanceTo(pp) < 4) chatFemale();
+}
+function chatFemale() {
+  if (S.chatCd > 0) return;
+  S.chatCd = 2;
+  S.hp = Math.min(S.maxHp, S.hp + 10);
+  toast('Dişi ayı seni karşıladı. Moral +10 can. “Mağaralara dikkat et…”');
+  audio.sleep();
 }
 function respawnFish(w) {
   const f = makeFish();
@@ -561,13 +571,15 @@ function separateEntities() {
         if (d) { ap.x += d.ax; ap.z += d.az; bp.x += d.bx; bp.z += d.bz; }
       }
     }
-    // penguenler ve dişi ayı yol verir (oyuncu ağır basar)
+    // penguenler dışarıda yol verir; dişi ayı inde de temaslıdır
     if (!S.inside) {
       for (const pg of penguins) {
         const mp = pg.mesh.position;
         const d = separationDelta(P.x, P.z, mp.x, mp.z, 1.1 + 0.5 - 0.3, 1);
         if (d) { mp.x += d.bx; mp.z += d.bz; }
       }
+    }
+    if (!S.inside || S.inside.type === 'den') {
       const fp = female.group.position;
       const df = separationDelta(P.x, P.z, fp.x, fp.z, 1.1 + 0.9 - 0.35, 1);
       if (df) { fp.x += df.bx; fp.z += df.bz; }
@@ -634,6 +646,7 @@ function animate() {
     S.biteCd = Math.max(0, S.biteCd - dt);
     S.hurtCd = Math.max(0, S.hurtCd - dt);
     S.eatCd = Math.max(0, S.eatCd - dt);
+    S.chatCd = Math.max(0, S.chatCd - dt);
     clawAnim = Math.max(0, clawAnim - dt / CLAW_DUR);
     biteAnim = Math.max(0, biteAnim - dt / BITE_DUR);
     const run = S.keys.ShiftLeft || S.keys.ShiftRight;
@@ -706,9 +719,15 @@ function animate() {
     player.group.rotation.x = rear;
     player.group.rotation.z = lean;
 
-    // dişi ayı: ini bekler, oyuncuya bakar
-    female.group.position.y = W.groundY(female.group.position.x, female.group.position.z);
-    female.group.lookAt(player.group.position.x, female.group.position.y, player.group.position.z);
+    // dişi ayı: inin iç odasında yaşar
+    {
+      const fp = female.group.position;
+      const cf = clampToCircle(fp.x, fp.z, DEN_ROOM.x, DEN_ROOM.z, DEN_ROOM.r);
+      if (cf) { fp.x = cf.x; fp.z = cf.z; }
+      fp.y = DEN_ROOM.floorY;
+      if (S.inside?.type === 'den') female.group.lookAt(player.group.position.x, fp.y, player.group.position.z);
+      else female.group.rotation.y = 0.56 + Math.sin(elapsed * 0.4) * 0.5;
+    }
     animateBear(female, elapsed + 2, false, false);
 
     // penguenler: suda-kar arası gezinir
@@ -838,7 +857,7 @@ function animate() {
 
     // bağlam ipuçları
     const pp = player.group.position;
-    if (S.inside?.type === 'den') setPrompt('[E] Ye / dışarı çık • [F] Uyu (can dolar, kayıt alınır)');
+    if (S.inside?.type === 'den') setPrompt('[E] Ye / konuş / çık • [F] Uyu (can dolar, kayıt alınır)');
     else if (S.inside) {
       const rm = S.inside.room;
       setPrompt('[E] Ye / dışarı çık' + (rm.boss ? ' — dikkat, ' + rm.boss + ' burada!' : ''));

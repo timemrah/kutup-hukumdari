@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { actionForKey, actionForMouseButton, resolveInsideE } from '../src/bindings.js';
+import { actionForKey, actionForMouseButton, resolveInsideE, resolveDenE } from '../src/bindings.js';
 
 describe('ısırma girdisi', () => {
   it('Space ısırır', () => {
@@ -20,5 +20,10 @@ describe('ısırma girdisi', () => {
   });
   it('içeride E: et yoksa çık', () => {
     assert.equal(resolveInsideE(false), 'exit');
+  });
+  it('inde E: et > sohbet > çık sırası', () => {
+    assert.equal(resolveDenE(true, true), 'eat');
+    assert.equal(resolveDenE(false, true), 'chat');
+    assert.equal(resolveDenE(false, false), 'exit');
   });
 });
